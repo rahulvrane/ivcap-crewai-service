@@ -20,8 +20,8 @@ from crewai.tasks import TaskOutput
 from crewai.tools.base_tool import BaseTool
 
 from dotenv import load_dotenv
-#from crewai_tools import SerperDevTool, DirectoryReadTool, FileReadTool, WebsiteSearchTool
-from crewai_tools import WebsiteSearchTool
+# Tools are imported in service.py where they are used
+# from crewai_tools import SerperDevTool, DirectoryReadTool, FileReadTool, WebsiteSearchTool
 from crewai.types.usage_metrics import UsageMetrics
 #from langchain_core.agents import AgentAction, AgentFinish
 
@@ -37,6 +37,9 @@ IVCAP_BASE_URL = os.environ.get("IVCAP_BASE_URL", "http://ivcap.local")
 class Context():
     vectordb_config: dict
     tmp_dir: str = "/tmp"
+    inputs_dir: Optional[str] = None  # Optional: Path to downloaded artifacts
+    jwt_token: Optional[str] = None  # Optional: JWT token for LLM authentication
+    llm_factory: Optional[Any] = None  # Optional: LLM factory for creating per-agent LLMs
 
 supported_tools = {}
 def add_supported_tools(tools: dict[str, Callable[['ToolA'], BaseTool]]):
@@ -118,6 +121,28 @@ class AgentA(BaseModel):
         try:
             d = self.model_dump(mode='python')
             d['tools'] = [t.as_crew_tool(ctxt) for t in self.tools]
+
+            # If agent specifies a custom LLM model and we have factory, create custom LLM
+            if self.llm and ctxt.llm_factory and ctxt.jwt_token:
+                try:
+                    # Create a custom LLM for this agent using the factory
+                    custom_llm = ctxt.llm_factory.create_llm(
+                        jwt_token=ctxt.jwt_token,
+                        model=self.llm,  # Use the agent's specified model
+                        temperature=0.7,  # Could be configured
+                        max_tokens=4000   # Could be configured
+                    )
+                    d['llm'] = custom_llm
+                except Exception as e:
+                    # Log warning but don't fail - fallback to default LLM
+                    import logging
+                    logging.warning(f"Failed to create custom LLM for agent {self.name}: {e}")
+                    # Remove the 'llm' field so it uses the crew's default
+                    d.pop('llm', None)
+            else:
+                # Remove the 'llm' string field since we're using the crew's LLM object
+                d.pop('llm', None)
+
             #d['verbose'] = True
             d.update(**kwargs)
             a = Agent(**d)
@@ -187,8 +212,17 @@ class CrewA(BaseModel):
         description="Maximum number of requests per minute for the crew execution to be respected.",
     )
 
-    def as_crew(self, llm: LLM, job_id: str, **kwargs) -> Crew:
-        ctxt = Context(vectordb_config=create_vectordb_config(job_id))
+    def as_crew(self, llm: LLM, job_id: str, inputs_dir: Optional[str] = None,
+                jwt_token: Optional[str] = None, **kwargs) -> Crew:
+        # Import here to avoid circular dependency
+        from llm_factory import get_llm_factory
+
+        ctxt = Context(
+            vectordb_config=create_vectordb_config(job_id),
+            inputs_dir=inputs_dir,  # Pass through if provided
+            jwt_token=jwt_token,  # Pass JWT token for per-agent LLM configuration
+            llm_factory=get_llm_factory() if jwt_token else None  # Only provide factory if we have JWT
+        )
         agents = {}
         for a in self.agents: agents[a.name] = a.as_crew_agent(llm=llm, ctxt=ctxt)
         tasks = [t.as_crew_task(agents, ctxt=ctxt) for t in self.tasks]

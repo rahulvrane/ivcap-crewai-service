@@ -13,3 +13,6 @@ UNUSED
 /.direnv/
 __service.json
 runs
+*.md
+test_backward_compat.py
+test_litellm_integration.py
