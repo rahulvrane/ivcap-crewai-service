@@ -23,6 +23,9 @@ dependencies = [
 [tool.poetry]
     package-mode = false
 
+[tool.poetry.group.dev.dependencies]
+cyclonedx-py = "^1.0.1"
+
 [tool.poetry-plugin-ivcap]
 service-file = "service.py"
 service-id = "urn:ivcap:service:01555c28-32d0-5839-b92b-f3e52410d6dd"
