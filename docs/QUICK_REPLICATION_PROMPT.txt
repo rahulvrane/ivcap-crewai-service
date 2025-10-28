@@ -1,0 +1,83 @@
+COPY THIS ENTIRE MESSAGE INTO A NEW CLAUDE CODE SESSION:
+================================================================================
+
+I need you to replicate citation tracking work from branch `claude/session-011CUZEYteFK5XKXHKre7kK4` to my branch `[YOUR_BRANCH_NAME]`.
+
+TASK: Cherry-pick commits 74b5000 and 1d5657a which implement a citation tracking system.
+
+WHAT IT DOES:
+- Validates DOI/PMID against Crossref/PubMed APIs (zero hallucinations)
+- Auto-extracts metadata from identifiers
+- Duplicate detection with fuzzy matching
+- Provides CitationManager tool for CrewAI agents
+
+FILES TO EXTRACT:
+1. citation_tracking/ directory (entire tree - 6 Python files ~2000 lines)
+2. docs/DEEP_RESEARCH_ANALYSIS.md
+3. docs/CITATION_TRACKING_SPEC.md
+
+INTEGRATION CHANGES NEEDED:
+
+service.py:
+- Add import: from citation_tracking import CitationManager, CitationManagerTool
+- Add to add_supported_tools: "urn:sd-core:crewai.builtin.citationManager": lambda _, ctxt: CitationManagerTool(citation_manager=CitationManager(job_id=ctxt.job_id))
+
+service_types.py:
+- Add import: from citation_tracking import CitationManager, CitationManagerTool
+- Update Context dataclass: add job_id: str as first field
+- Update as_crew method: ctxt = Context(job_id=job_id, vectordb_config=...)
+
+crews/deep_search.json:
+- Add CitationManager tool to researcher.tools[]
+- Add CitationManager tool to writer.tools[]
+- Add new citation_specialist agent (after writer)
+- Update researcher task step 9-12 to use CitationManager tool
+
+STEPS:
+
+1. Fetch source branch:
+   git fetch origin
+   git checkout [YOUR_BRANCH_NAME]
+
+2. Extract files from source branch:
+   mkdir -p citation_tracking/{core,validation,tools,utils}
+   git show origin/claude/session-011CUZEYteFK5XKXHKre7kK4:citation_tracking/core/citation_model.py > citation_tracking/core/citation_model.py
+   [repeat for all 6 files - see detailed list in REPLICATION_PROMPT.md]
+
+3. Make integration changes (detailed above)
+
+4. Handle conflicts intelligently:
+   - Read existing files first
+   - Merge, don't overwrite
+   - Ask me if unsure
+
+5. Commit:
+   git add citation_tracking/ docs/*.md service.py service_types.py crews/deep_search.json
+   git commit -m "Add citation tracking system from claude/session-011CUZEYteFK5XKXHKre7kK4"
+   git push origin [YOUR_BRANCH_NAME]
+
+EXTRACT THESE FILES (use git show):
+- citation_tracking/__init__.py
+- citation_tracking/core/__init__.py
+- citation_tracking/core/citation_model.py
+- citation_tracking/core/citation_manager.py
+- citation_tracking/validation/__init__.py
+- citation_tracking/validation/doi_validator.py
+- citation_tracking/validation/pmid_validator.py
+- citation_tracking/validation/duplicate_detector.py
+- citation_tracking/tools/__init__.py
+- citation_tracking/tools/citation_tool.py
+- citation_tracking/utils/__init__.py
+- docs/DEEP_RESEARCH_ANALYSIS.md
+- docs/CITATION_TRACKING_SPEC.md
+
+VERIFY:
+- Python imports work: python3 -c "from citation_tracking import CitationManager"
+- Files created: find citation_tracking -type f
+- Integration: grep "citationManager" service.py
+
+For detailed instructions see: docs/REPLICATION_PROMPT.md
+
+IMPORTANT: Ask me about any conflicts before overwriting existing code.
+
+TARGET BRANCH: [FILL IN YOUR BRANCH NAME HERE]
