@@ -27,6 +27,7 @@ from crewai.types.usage_metrics import UsageMetrics
 
 from ivcap_tool import ivcap_tool_test
 from vectordb import create_vectordb_config
+from citation_tracking import CitationManager, CitationManagerTool
 
 from events import EventListener
 EventListener()
@@ -35,6 +36,7 @@ IVCAP_BASE_URL = os.environ.get("IVCAP_BASE_URL", "http://ivcap.local")
 
 @dataclass
 class Context():
+    job_id: str
     vectordb_config: dict
     tmp_dir: str = "/tmp"
 
@@ -188,7 +190,7 @@ class CrewA(BaseModel):
     )
 
     def as_crew(self, llm: LLM, job_id: str, **kwargs) -> Crew:
-        ctxt = Context(vectordb_config=create_vectordb_config(job_id))
+        ctxt = Context(job_id=job_id, vectordb_config=create_vectordb_config(job_id))
         agents = {}
         for a in self.agents: agents[a.name] = a.as_crew_agent(llm=llm, ctxt=ctxt)
         tasks = [t.as_crew_task(agents, ctxt=ctxt) for t in self.tasks]

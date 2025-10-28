@@ -27,6 +27,7 @@ from ivcap_service import getLogger, Service, JobContext
 from ivcap_ai_tool import start_tool_server, ToolOptions, ivcap_ai_tool, logging_init
 
 from service_types import BuiltinWrapper, CrewA, TaskResponse, add_supported_tools
+from citation_tracking import CitationManager, CitationManagerTool
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -75,6 +76,7 @@ add_supported_tools({
     # "urn:sd-core:crewai.builtin.directoryReadTool": lambda _, ctxt: DirectoryReadTool(directory=ctxt.tmp_dir),
     # "urn:sd-core:crewai.builtin.fileReadTool": lambda _, ctxt: FileReadTool(directory=ctxt.tmp_dir),
     "urn:sd-core:crewai.builtin.websiteSearchTool": lambda _, ctxt: BuiltinWrapper(WebsiteSearchTool(config=ctxt.vectordb_config)),
+    "urn:sd-core:crewai.builtin.citationManager": lambda _, ctxt: CitationManagerTool(citation_manager=CitationManager(job_id=ctxt.job_id)),
 })
 
 @ivcap_ai_tool("/", opts=ToolOptions(tags=["CrewAI Runner"]))
