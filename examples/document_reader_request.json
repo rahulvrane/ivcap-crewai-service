@@ -22,11 +22,6 @@
             "id": "builtin:DirectoryReadTool",
             "name": "DirectoryReadTool",
             "description": "Lists all files in the inputs directory"
-          },
-          {
-            "id": "builtin:DirectorySearchTool",
-            "name": "DirectorySearchTool",
-            "description": "Semantic search across all files in the directory using RAG/embeddings"
           }
         ],
         "memory": true,
@@ -49,7 +44,7 @@
     "tasks": [
       {
         "name": "extract_information",
-        "description": "Step 1: Use DirectoryReadTool to list all files in the inputs directory.\n\nStep 2: Use DirectorySearchTool to search for key information across all documents. Run multiple searches with different queries like:\n- 'main topics and themes'\n- 'key facts and data points'\n- 'conclusions and recommendations'\n- 'important dates and numbers'\n- 'notable quotes and insights'\n\nStep 3: Extract and organize the information found, clearly noting which queries found which information.\n\nStep 4: Organize your findings by document and by theme, clearly noting which document each piece of information came from.",
+        "description": "Step 1: Use DirectoryReadTool to list all PDF files in the inputs directory.\n\nStep 2: For each PDF file found, use PDFSearchTool to extract information by running multiple searches with different queries like:\n- 'main topics and themes'\n- 'key facts and data points'\n- 'conclusions and recommendations'\n- 'important dates and numbers'\n- 'notable quotes and insights'\n\nStep 3: Extract and organize the information found from each PDF, clearly noting which queries found which information.\n\nStep 4: Organize your findings by document and by theme, clearly noting which PDF document each piece of information came from.",
         "expected_output": "# Extracted Information from Documents\n\n## Document 1: [filename]\n**Main Topics:**\n- Topic 1\n- Topic 2\n\n**Key Facts:**\n- Fact 1\n- Fact 2\n\n**Important Details:**\n- Detail 1\n- Detail 2\n\n## Document 2: [filename]\n**Main Topics:**\n- Topic 1\n- Topic 2\n\n**Key Facts:**\n- Fact 1\n- Fact 2\n\n**Important Details:**\n- Detail 1\n- Detail 2\n\n[Continue for each document found]\n\n## Summary Statistics\n- Total documents read: [number]\n- Total files in directory: [number]\n- Documents successfully processed: [number]",
         "agent": "extractor",
         "async_execution": false,

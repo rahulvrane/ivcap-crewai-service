@@ -18,6 +18,9 @@ Changes:
 - Set OPENAI environment variables for tools that use OpenAI directly (WebsiteSearchTool)
 - Set IVCAP_JWT environment variable for artifact downloads authentication
 - Set CREWAI_STORAGE_DIR to job-specific path for complete RAG/memory/knowledge isolation
+- Added diagnostic logging for embedder config and RAG tools status
+- Added PDFSearchTool registration and import
+- Implemented automatic tool injection based on artifact file types (PDF → PDFSearchTool, text → DirectorySearchTool)
 """
 
 import datetime
@@ -39,7 +42,7 @@ litellm.set_verbose = False  # Set to True for debugging
 from pydantic import BaseModel, Field, ConfigDict
 from crewai import LLM
 from crewai.types.usage_metrics import UsageMetrics
-from crewai_tools import DirectoryReadTool, DirectorySearchTool, FileReadTool, SerperDevTool, ScrapeWebsiteTool, WebsiteSearchTool
+from crewai_tools import DirectoryReadTool, DirectorySearchTool, FileReadTool, PDFSearchTool, SerperDevTool, ScrapeWebsiteTool, WebsiteSearchTool
 
 from ivcap_service import getLogger, Service, JobContext
 from ivcap_ai_tool import start_tool_server, ToolOptions, ivcap_ai_tool, logging_init
@@ -133,12 +136,16 @@ add_supported_tools({
         lambda _, ctxt: DirectoryReadTool(directory=ctxt.inputs_dir) 
         if ctxt.inputs_dir else None,
     
-    # DirectorySearchTool - requires inputs_dir (semantic search with RAG/embeddings)
+    # DirectorySearchTool - requires inputs_dir (inherits embedder from Crew)
     "urn:sd-core:crewai.builtin.directorySearchTool": 
         lambda _, ctxt: DirectorySearchTool(
-            directory=ctxt.inputs_dir,
-            config=ctxt.vectordb_config
+            directory=ctxt.inputs_dir
+            # NO config needed - uses Crew's embedder automatically!
         ) if ctxt.inputs_dir else None,
+    
+    # PDFSearchTool - for semantic search within PDF documents (inherits embedder from Crew)
+    "urn:sd-core:crewai.builtin.pdfSearchTool": 
+        lambda _, ctxt: PDFSearchTool() if ctxt.inputs_dir else None,
     
     # FileReadTool - requires inputs_dir
     "urn:sd-core:crewai.builtin.fileReadTool":
@@ -340,6 +347,21 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
                     req.inputs = {}
                 req.inputs['inputs_directory'] = inputs_dir
                 logger.info(f"✓ Artifacts available at: {inputs_dir}")
+                
+                # Detect file types and recommend appropriate tools
+                from pathlib import Path
+                inputs_path = Path(inputs_dir)
+                pdf_files = list(inputs_path.glob("*.pdf"))
+                text_files = list(inputs_path.glob("*.txt")) + list(inputs_path.glob("*.md")) + list(inputs_path.glob("*.csv"))
+                
+                if pdf_files:
+                    logger.info(f"📄 Detected {len(pdf_files)} PDF file(s) - PDFSearchTool recommended")
+                    logger.info(f"   Files: {', '.join([f.name for f in pdf_files[:5]])}")
+                if text_files:
+                    logger.info(f"📝 Detected {len(text_files)} text file(s) - DirectorySearchTool recommended")
+                    logger.info(f"   Files: {', '.join([f.name for f in text_files[:5]])}")
+                if not pdf_files and not text_files:
+                    logger.warning("⚠ No recognized file types (PDF/TXT/MD/CSV) - DirectoryReadTool can list files")
             else:
                 logger.warning("Artifact download failed, continuing without artifacts")
         
@@ -352,6 +374,60 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
         # ==================== STEP 4: LOAD CREW ====================
         crew_def = load_crew_definition(req)
         logger.info(f"Loaded crew definition: {crew_def.name}")
+        
+        # Auto-inject appropriate search tools based on detected file types
+        if req.artifact_urns and inputs_dir:
+            from pathlib import Path
+            from service_types import ToolA
+            
+            inputs_path = Path(inputs_dir)
+            pdf_files = list(inputs_path.glob("*.pdf"))
+            text_files = list(inputs_path.glob("*.txt")) + list(inputs_path.glob("*.md")) + list(inputs_path.glob("*.csv"))
+            
+            # Inject PDFSearchTool if PDFs detected
+            if pdf_files:
+                pdf_tool = ToolA(
+                    id="builtin:PDFSearchTool",
+                    name="PDFSearchTool",
+                    description="Semantic search within PDF documents using RAG/embeddings"
+                )
+                
+                # Add PDFSearchTool to all agents that have DirectoryReadTool
+                for agent in crew_def.agents:
+                    has_directory_read = any(
+                        t.id in ["builtin:DirectoryReadTool", "urn:sd-core:crewai.builtin.directoryReadTool"] 
+                        for t in agent.tools
+                    )
+                    has_pdf_search = any(
+                        t.id in ["builtin:PDFSearchTool", "urn:sd-core:crewai.builtin.pdfSearchTool"] 
+                        for t in agent.tools
+                    )
+                    
+                    if has_directory_read and not has_pdf_search:
+                        agent.tools.append(pdf_tool)
+                        logger.info(f"→ Auto-injected PDFSearchTool into agent '{agent.name}' for {len(pdf_files)} PDF(s)")
+            
+            # Inject DirectorySearchTool if text files detected
+            if text_files:
+                text_tool = ToolA(
+                    id="builtin:DirectorySearchTool",
+                    name="DirectorySearchTool",
+                    description="Semantic search across text-based files using RAG/embeddings"
+                )
+                
+                for agent in crew_def.agents:
+                    has_directory_read = any(
+                        t.id in ["builtin:DirectoryReadTool", "urn:sd-core:crewai.builtin.directoryReadTool"] 
+                        for t in agent.tools
+                    )
+                    has_dir_search = any(
+                        t.id in ["builtin:DirectorySearchTool", "urn:sd-core:crewai.builtin.directorySearchTool"] 
+                        for t in agent.tools
+                    )
+                    
+                    if has_directory_read and not has_dir_search:
+                        agent.tools.append(text_tool)
+                        logger.info(f"→ Auto-injected DirectorySearchTool into agent '{agent.name}' for {len(text_files)} text file(s)")
         
         # ==================== STEP 5: CREATE LLM ====================
         llm, planning_llm, embedder_config, litellm_proxy_url = create_authenticated_llm(jwt_token, req.inputs)
@@ -398,6 +474,16 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
             f"✓ Crew built: {len(crew.agents)} agents, "
             f"{len(crew.tasks)} tasks"
         )
+        
+        # Log embedder and RAG tools status
+        if embedder_config:
+            embedder_model = embedder_config.get('config', {}).get('model', 'unknown')
+            embedder_base = embedder_config.get('config', {}).get('api_base', 'unknown')
+            logger.info(f"✓ RAG tools enabled: DirectorySearchTool will index files in {inputs_dir}")
+            logger.info(f"  Embedder: model={embedder_model}, api_base={embedder_base}")
+        else:
+            logger.warning("⚠ RAG tools disabled: No embedder configured")
+            logger.warning("  DirectorySearchTool will NOT work without embedder")
         
         # ==================== STEP 7: EXECUTE ====================
         logger.info(f"Executing crew: {req.name}")
