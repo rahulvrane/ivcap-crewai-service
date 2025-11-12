@@ -11,6 +11,9 @@
       "backstory": "You work at a leading tech think tank. Your expertise lies in identifying emerging trends. You have a knack for dissecting complex data and presenting actionable insights",
       "tools": [
         {
+          "id": "builtin:SerperDevTool"
+        },
+        {
           "id": "builtin:WebsiteSearchTool",
           "opts": {
             "safesearch": "off"
@@ -32,18 +35,19 @@
   ],
   "tasks": [
     {
+      "name": "research_task",
       "description": "Conduct a comprehensive analysis of the latest advancements in AI in 2024. Identify key trends, breakthrough technologies, and potential industry impacts.",
       "expected_output": "# AI Advancements Analysis 2024\n\n## Key Trends\n- Trend 1\n- Trend 2\n\n## Breakthrough Technologies\n- Technology 1\n- Technology 2\n\n## Industry Impacts\n- Impact 1\n- Impact 2",
       "agent": "researcher",
-      "context": "initial_knowledge_base",
       "async_execution": false,
       "tools": []
     },
     {
+      "name": "writing_task",
       "description": "Using the insights provided, develop an engaging blog post that highlights the most significant AI advancements. Your post should be informative yet accessible, catering to a tech-savvy audience. Make it sound cool, avoid complex words so it doesn't sound like AI.",
       "expected_output": "# The Cutting Edge: AI in 2024\n\n[Four or more engaging paragraphs about AI advancements, written in an accessible style for tech-savvy readers.]",
       "agent": "writer",
-      "context": "researcher",
+      "context": ["research_task"],
       "async_execution": false,
       "tools": []
     }

@@ -13,3 +13,5 @@ UNUSED
 /.direnv/
 __service.json
 runs
+docs_context/*
+examples/litellm_*.log
