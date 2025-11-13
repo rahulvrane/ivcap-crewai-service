@@ -1099,6 +1099,8 @@ INFO: ✓ Added 2 knowledge source(s) to crew
 | `crew3_request.json` | Anti-hallucination | Source verification, gap reporting | No | No | Medium |
 | `document_reader_request.json` | PDF processing | Artifact download, PDFSearchTool | 2 PDFs | No | Medium |
 | `knowledge_request.json` | Multi-stage workflow | Knowledge sources, RAG | No | 2 sources | High |
+| `software_discovery_aspect_test.json` | Crew aspect reference | Entity URN, ML tool discovery | No | No | Medium |
+| `software_discovery_data_analysis.json` | Domain-specific discovery | Bioinformatics tools | No | No | Medium |
 
 ### Quick Test All Examples
 
@@ -1215,6 +1217,91 @@ If issues persist:
 2. Save failing request: `cat failing_request.json`
 3. Note error message and timestamp
 4. Check IVCAP platform status
+
+---
+
+### Test 5: `software_discovery_aspect_test.json` - Crew Aspect Reference ⭐ NEW
+
+**Purpose**: Test using crew-ref with entity URN (not inline crew definition)  
+**Features**: Aspect loading from IVCAP, entity URN resolution, multi-agent workflow  
+**Agents**: discovery_agent, analysis_agent, synthesis_agent  
+**Tasks**: 3 (discover tools → analyze candidates → recommend top tools)
+
+```bash
+# Test ML training infrastructure discovery
+curl -X POST http://localhost:8077/ \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $IVCAP_TOKEN" \
+  -d @tests/software_discovery_aspect_test.json | jq .
+
+# Test bioinformatics tools discovery
+curl -X POST http://localhost:8077/ \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $IVCAP_TOKEN" \
+  -d @tests/software_discovery_data_analysis.json | jq .
+```
+
+**What's tested:**
+- Loading crew from IVCAP aspect using `crew-ref`
+- Entity URN resolution (not artifact URN)
+- Complex placeholder usage (research_topic, keywords, additional_information)
+- Three-stage discovery workflow
+- Web research with SerperDevTool and WebsiteSearchTool
+- Multi-agent collaboration
+
+**Request structure:**
+```json
+{
+  "$schema": "urn:sd-core:schema.crewai.request.1",
+  "name": "Software Discovery Test",
+  "crew-ref": "urn:sd:crewai:crew.software_discovery",
+  "inputs": {
+    "research_topic": "Deep Learning Training Infrastructure",
+    "keywords": "PyTorch, distributed training, GPU clusters",
+    "additional_information": "Multi-node training, 1B+ parameters, $10k budget"
+  }
+}
+```
+
+**Expected outcome**: 
+- Discovery report with 10-15 relevant tools
+- Detailed analysis of top 5-10 candidates
+- Final recommendations for top 3-5 tools with comparison table
+
+**Key logs to watch for:**
+```
+INFO: Loaded crew definition: Software Discovery
+INFO: Building crew: Software Discovery
+INFO: Built 3 agents
+INFO: Building 3 tasks (pass 1: creation)
+INFO: Resolving task context chains (pass 2)
+INFO: Task 'Analysis Task' context resolved: ['Discovery Task']
+INFO: Task 'Synthesis Task' context resolved: ['Analysis Task']
+INFO: ✓ Crew built: 3 agents, 3 tasks
+```
+
+**Validation checks:**
+- ✅ Crew loaded from IVCAP aspect (not inline definition)
+- ✅ Entity URN `urn:sd:crewai:crew.software_discovery` resolves correctly
+- ✅ All three placeholders populated in agent goals and task descriptions
+- ✅ Three tasks execute sequentially with proper context chaining
+- ✅ Final output includes tool recommendations with rationale
+
+**Using the helper script** (recommended):
+```bash
+# Create IVCAP order using helper script
+tests/create_order.sh tests/software_discovery_aspect_test.json
+
+# Returns job ID and monitoring commands
+```
+
+**Alternative: Using Makefile for IVCAP orders**:
+```bash
+# Create order on deployed IVCAP service
+make test-job-ivcap TEST_REQUEST=tests/software_discovery_aspect_test.json
+```
+
+**See detailed documentation**: [tests/README_SOFTWARE_DISCOVERY.md](tests/README_SOFTWARE_DISCOVERY.md)
 
 ---
 
