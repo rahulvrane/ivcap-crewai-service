@@ -188,6 +188,7 @@ class CrewBuilder:
         job_id: str,
         planning_llm=None,
         embedder=None,
+        knowledge_sources=None,
         **kwargs
     ) -> Crew:
         """
@@ -198,6 +199,7 @@ class CrewBuilder:
             llm: LLM instance for crew
             planning_llm: Optional LLM for planning agent (with JWT auth)
             embedder: Optional embedder configuration for embeddings via LiteLLM proxy
+            knowledge_sources: Optional list of knowledge sources (from previous crew outputs)
             job_id: Job identifier
             **kwargs: Additional Crew parameters (memory, verbose, planning, etc.)
         
@@ -211,6 +213,7 @@ class CrewBuilder:
                 llm=llm_instance,
                 planning_llm=planning_llm_instance,
                 embedder=embedder_config,
+                knowledge_sources=[StringKnowledgeSource(...)],
                 job_id="urn:ivcap:job:123",
                 memory=False,
                 verbose=True
@@ -249,6 +252,11 @@ class CrewBuilder:
         # Add embedder if provided
         if embedder:
             crew_config["embedder"] = embedder
+        
+        # Add knowledge sources if provided
+        if knowledge_sources:
+            crew_config["knowledge_sources"] = knowledge_sources
+            logger.info(f"✓ Added {len(knowledge_sources)} knowledge source(s) to crew")
         
         # Add optional parameters
         if crew_spec.max_rpm:

@@ -260,6 +260,7 @@ class CrewA(BaseModel):
         embedder: Optional[dict] = None,
         inputs_dir: Optional[str] = None,
         jwt_token: Optional[str] = None,
+        knowledge_sources: Optional[list] = None,
         **kwargs
     ) -> Crew:
         """
@@ -272,6 +273,7 @@ class CrewA(BaseModel):
         
         Updated: Uses CrewBuilder for two-pass task context resolution
         Updated: Added embedder parameter for JWT-authenticated embeddings
+        Updated: Added knowledge_sources parameter for previous crew outputs
         """
         # Import here to avoid circular dependency
         from llm_factory import get_llm_factory
@@ -295,6 +297,7 @@ class CrewA(BaseModel):
             job_id=job_id,
             planning_llm=planning_llm,
             embedder=embedder,
+            knowledge_sources=knowledge_sources,
             **kwargs
         )
         

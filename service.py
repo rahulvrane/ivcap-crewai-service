@@ -2,7 +2,7 @@
 IVCAP CrewAI Service
 Executes CrewAI crews with artifact support and JWT authentication
 
-Updated: Integrated LiteLLM proxy configuration and embedder support
+Updated: Added knowledge sources support for previous crew outputs
 Changes:
 - Added ArtifactManager for artifact lifecycle
 - Added JWT token extraction (4-path fallback with job_authorization)
@@ -21,13 +21,16 @@ Changes:
 - Added diagnostic logging for embedder config and RAG tools status
 - Added PDFSearchTool registration and import
 - Implemented automatic tool injection based on artifact file types (PDF → PDFSearchTool, text → DirectorySearchTool)
+- Added knowledge_sources support: previous crew outputs → StringKnowledgeSource → crew-level knowledge
+- Fixed Path import shadowing issue (removed duplicate local imports)
+- Fixed PDFSearchTool/DirectorySearchTool auto-injection to use correct URN format (lowercase first char)
 """
 
 import datetime
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 # Disable telemetry BEFORE importing CrewAI
 os.environ["OTEL_SDK_DISABLED"] = "true"
@@ -94,6 +97,11 @@ class CrewRequest(BaseModel):
         None,
         description="IVCAP artifact URNs to download as inputs",
         alias="artifact-urns"
+    )
+    additional_inputs: Optional[Union[str, list[str]]] = Field(
+        None,
+        description="Previous crew outputs as markdown (string or list of strings)",
+        alias="additional-inputs"
     )
     enable_citations: Optional[bool] = Field(
         False,
@@ -349,7 +357,6 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
                 logger.info(f"✓ Artifacts available at: {inputs_dir}")
                 
                 # Detect file types and recommend appropriate tools
-                from pathlib import Path
                 inputs_path = Path(inputs_dir)
                 pdf_files = list(inputs_path.glob("*.pdf"))
                 text_files = list(inputs_path.glob("*.txt")) + list(inputs_path.glob("*.md")) + list(inputs_path.glob("*.csv"))
@@ -377,7 +384,6 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
         
         # Auto-inject appropriate search tools based on detected file types
         if req.artifact_urns and inputs_dir:
-            from pathlib import Path
             from service_types import ToolA
             
             inputs_path = Path(inputs_dir)
@@ -387,7 +393,7 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
             # Inject PDFSearchTool if PDFs detected
             if pdf_files:
                 pdf_tool = ToolA(
-                    id="builtin:PDFSearchTool",
+                    id="urn:sd-core:crewai.builtin.pdfSearchTool",
                     name="PDFSearchTool",
                     description="Semantic search within PDF documents using RAG/embeddings"
                 )
@@ -410,7 +416,7 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
             # Inject DirectorySearchTool if text files detected
             if text_files:
                 text_tool = ToolA(
-                    id="builtin:DirectorySearchTool",
+                    id="urn:sd-core:crewai.builtin.directorySearchTool",
                     name="DirectorySearchTool",
                     description="Semantic search across text-based files using RAG/embeddings"
                 )
@@ -456,7 +462,24 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
             os.environ["OPENAI_API_BASE"] = litellm_proxy_url
             logger.info(f"✓ Set OpenAI environment for tool compatibility")
         
-        # ==================== STEP 6: BUILD CREW ====================
+        # ==================== STEP 6: PROCESS ADDITIONAL INPUTS AS KNOWLEDGE ====================
+        knowledge_sources = []
+        if req.additional_inputs:
+            logger.info("📚 Processing additional inputs as knowledge sources...")
+            from knowledge_processor import create_knowledge_sources_from_inputs
+            try:
+                knowledge_sources = create_knowledge_sources_from_inputs(req.additional_inputs)
+                logger.info(f"✓ Created {len(knowledge_sources)} knowledge source(s) for crew")
+                if knowledge_sources and embedder_config:
+                    logger.info("  Knowledge sources will use JWT-authenticated embedder")
+                elif knowledge_sources and not embedder_config:
+                    logger.warning("  ⚠ Knowledge sources without embedder - may use default OpenAI")
+            except Exception as e:
+                logger.error(f"Failed to process additional inputs: {e}", exc_info=True)
+                logger.warning("Continuing without knowledge sources")
+                knowledge_sources = []
+        
+        # ==================== STEP 7: BUILD CREW ====================
         # CrewBuilder handles task context resolution!
         crew = crew_def.as_crew(
             llm=llm,
@@ -465,6 +488,7 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
             embedder=embedder_config,
             inputs_dir=inputs_dir,
             jwt_token=jwt_token,
+            knowledge_sources=knowledge_sources,
             memory=False,
             verbose=False,
             # planning value now comes from crew_spec.planning (defaults to False)
@@ -485,7 +509,7 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
             logger.warning("⚠ RAG tools disabled: No embedder configured")
             logger.warning("  DirectorySearchTool will NOT work without embedder")
         
-        # ==================== STEP 7: EXECUTE ====================
+        # ==================== STEP 8: EXECUTE ====================
         logger.info(f"Executing crew: {req.name}")
         start_time = (time.process_time(), time.time())
         
