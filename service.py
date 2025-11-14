@@ -379,7 +379,7 @@ async def crew_runner(req: CrewRequest, jobCtxt: JobContext) -> CrewResponse:
         #     logger.info(f"Citation tracking enabled for job {jobCtxt.job_id}")
         
         # ==================== STEP 4: LOAD CREW ====================
-        crew_def = load_crew_definition(req, jobCtxt.ivcap)
+        crew_def = load_crew_definition(req)
         logger.info(f"Loaded crew definition: {crew_def.name}")
         
         # Auto-inject appropriate search tools based on detected file types
@@ -614,7 +614,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--default-model',
         type=str,
-        default=os.getenv('LITELLM_DEFAULT_MODEL', 'gpt-4.1'),
+        default=os.getenv('LITELLM_DEFAULT_MODEL', 'gemini-2.5-flash'),
         help='Default LLM model'
     )
     args = parser.parse_args()
